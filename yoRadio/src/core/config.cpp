@@ -3,6 +3,7 @@
 //#include <SPIFFS.h>
 #include "display.h"
 #include "player.h"
+#include "netserver.h"
 
 Config config;
 
@@ -15,8 +16,20 @@ void u8fix(char *src){
   if ((uint8_t)last >= 0xC2) src[strlen(src)-1]='\0';
 }
 
+bool Config::_isFSempty() {
+  const char* reqiredFiles[] = {"dragpl.js.gz","elogo.png","elogo84.png","index.html","ir.css.gz","ir.html","ir.js.gz","script.js.gz","settings.css.gz","settings.html","style.css.gz","update.html"};
+  const uint8_t reqiredFilesSize = 12;
+  char fullpath[28];
+  for (uint8_t i=0; i<reqiredFilesSize; i++){
+    sprintf(fullpath, "/www/%s", reqiredFiles[i]);
+    if(!SPIFFS.exists(fullpath)) return true;
+  }
+  return false;
+}
+
 void Config::init() {
   EEPROM.begin(EEPROM_SIZE);
+  emptyFS = true;
 #if IR_PIN!=255
     irindex=-1;
 #endif
@@ -26,12 +39,16 @@ void Config::init() {
   if(store.play_mode==80) store.play_mode=0b100;
   sdSnuffle = bitRead(store.play_mode, 2);
   store.play_mode = store.play_mode & 0b11;
+  _initHW();
   //if (!SPIFFS.begin(false, "/spiffs", 30)) {
-  if (!SPIFFS.begin(false)) {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("##[ERROR]#\tSPIFFS Mount Failed");
     return;
   }
-  
-  loadTheme();
+  BOOTLOG("SPIFFS mounted");
+  //emptyFS = !SPIFFS.exists("/www/index.html");
+  emptyFS = _isFSempty();
+  if(emptyFS) BOOTLOG("SPIFFS is empty!");
   ssidsCount = 0;
   sdResumePos = 0;
   if(SDC_CS!=255){
@@ -42,7 +59,7 @@ void Config::init() {
       if(store.play_mode==PM_SDCARD) initSDPlaylist();
     }
   }
-  if(store.play_mode==PM_WEB) initPlaylist();
+  if(store.play_mode==PM_WEB && !emptyFS) initPlaylist();
   
   if (store.lastStation == 0 && store.countStation > 0) {
     store.lastStation = 1;
@@ -50,18 +67,23 @@ void Config::init() {
   }
   
   loadStation(store.lastStation);
-#if IR_PIN!=255
+
+  bootInfo();
+}
+
+void Config::_initHW(){
+  loadTheme();
+  #if IR_PIN!=255
   eepromRead(EEPROM_START_IR, ircodes);
   if(ircodes.ir_set!=4224){
     ircodes.ir_set=4224;
     memset(ircodes.irVals, 0, sizeof(ircodes.irVals));
   }
-#endif
-#if BRIGHTNESS_PIN!=255
-  pinMode(BRIGHTNESS_PIN, OUTPUT);
-  setBrightness(false);
-#endif
-  bootInfo();
+  #endif
+  #if BRIGHTNESS_PIN!=255
+    pinMode(BRIGHTNESS_PIN, OUTPUT);
+    setBrightness(false);
+  #endif
 }
 
 uint16_t Config::color565(uint8_t r, uint8_t g, uint8_t b)
@@ -82,6 +104,7 @@ void Config::loadTheme(){
   theme.vumax         = color565(COLOR_VU_MAX);
   theme.vumin         = color565(COLOR_VU_MIN);
   theme.clock         = color565(COLOR_CLOCK);
+  theme.clockbg       = color565(COLOR_CLOCK_BG);
   theme.seconds       = color565(COLOR_SECONDS);
   theme.dow           = color565(COLOR_DAY_OF_W);
   theme.date          = color565(COLOR_DATE);
@@ -101,6 +124,7 @@ void Config::loadTheme(){
   theme.playlist[2]   = color565(COLOR_PLAYLIST_2);
   theme.playlist[3]   = color565(COLOR_PLAYLIST_3);
   theme.playlist[4]   = color565(COLOR_PLAYLIST_4);
+  #include "../displays/tools/tftinverttitle.h"
 }
 
 template <class T> int Config::eepromWrite(int ee, const T& value) {
@@ -213,6 +237,8 @@ void Config::saveVolume(){
 
 byte Config::setVolume(byte val) {
   store.volume = val;
+  display.putRequest(DRAWVOL);
+  netserver.requestOnChange(VOLUME, 0);
   return store.volume;
 }
 
@@ -257,6 +283,8 @@ void Config::setTitle(const char* title) {
   memset(config.station.title, 0, BUFLEN);
   strlcpy(config.station.title, title, BUFLEN);
   u8fix(config.station.title);
+  netserver.requestOnChange(TITLE, 0);
+  netserver.loop();
   display.putRequest(NEWTITLE);
 }
 
@@ -401,20 +429,36 @@ void Config::loadStation(uint16_t ls) {
   playlist.close();
 }
 
-void Config::fillPlMenu(char plmenu[][40], int from, byte count, bool removeNum) {
-  int ls = from;
-  byte c = 0;
-  bool finded = false;
-  char sName[BUFLEN], sUrl[BUFLEN];
-  int sOvol;
+char * Config::stationByNum(uint16_t num){
+  File playlist = SPIFFS.open(REAL_PLAYL, "r");
+  File index = SPIFFS.open(REAL_INDEX, "r");
+  index.seek((num - 1) * 4, SeekSet);
+  uint32_t pos;
+  memset(_stationBuf, 0, BUFLEN/2);
+  index.readBytes((char *) &pos, 4);
+  index.close();
+  playlist.seek(pos, SeekSet);
+  strncpy(_stationBuf, playlist.readStringUntil('\t').c_str(), BUFLEN/2);
+  playlist.close();
+  return _stationBuf;
+}
+
+uint8_t Config::fillPlMenu(int from, uint8_t count, bool fromNextion) {
+  int     ls      = from;
+  uint8_t c       = 0;
+  bool    finded  = false;
   if (store.countStation == 0) {
-    return;
+    return 0;
   }
   File playlist = SPIFFS.open(REAL_PLAYL, "r");
   File index = SPIFFS.open(REAL_INDEX, "r");
   while (true) {
     if (ls < 1) {
       ls++;
+      if(!fromNextion) display.printPLitem(c, "");
+  #ifdef USE_NEXTION
+    if(fromNextion) nextion.printPLitem(c, "");
+  #endif
       c++;
       continue;
     }
@@ -427,24 +471,19 @@ void Config::fillPlMenu(char plmenu[][40], int from, byte count, bool removeNum)
       playlist.seek(pos, SeekSet);
     }
     while (playlist.available()) {
-      if (parseCSV(playlist.readStringUntil('\n').c_str(), sName, sUrl, sOvol)) {
-        if(config.store.numplaylist){
-          if(removeNum){
-            strlcpy(plmenu[c], sName, 39);
-          }else{
-            char buf[BUFLEN+10];
-            sprintf(buf, "%d %s", (int)(from+c), sName);
-            strlcpy(plmenu[c], buf, 39);
-          }
-        }else{
-          strlcpy(plmenu[c], sName, 39);
-        }
-        c++;
-      }
+      String stationName = playlist.readStringUntil('\n');
+      stationName = stationName.substring(0, stationName.indexOf('\t'));
+      if(config.store.numplaylist) stationName = String(from+c)+" "+stationName;
+      if(!fromNextion) display.printPLitem(c, stationName.c_str());
+  #ifdef USE_NEXTION
+    if(fromNextion) nextion.printPLitem(c, stationName.c_str());
+  #endif
+      c++;
       if (c >= count) break;
     }
     break;
   }
+  return c;
   playlist.close();
 }
 

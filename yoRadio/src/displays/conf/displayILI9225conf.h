@@ -12,9 +12,6 @@
 #define DSP_HEIGHT      176
 #define TFT_FRAMEWDT    4
 #define MAX_WIDTH       DSP_WIDTH-TFT_FRAMEWDT*2
-#define PLMITEMS        9
-#define PLMITEMLENGHT   40
-#define PLMITEMHEIGHT   22
 
 #define bootLogoTop     28
 //#define DSP_QUEUE_TICKS 5
@@ -30,6 +27,7 @@ const ScrollConfig weatherConf    PROGMEM = {{ TFT_FRAMEWDT, 50, 2, WA_LEFT }, 1
 
 /* BACKGROUNDS  */                       /* {{ left, top, fontsize, align }, width, height, outlined } */
 const FillConfig   metaBGConf     PROGMEM = {{ 0, 0, 0, WA_LEFT }, DSP_WIDTH, 22, false };
+const FillConfig   metaBGConfInv  PROGMEM = {{ 0, 22, 0, WA_LEFT }, DSP_WIDTH, 1, false };
 const FillConfig   volbarConf     PROGMEM = {{ TFT_FRAMEWDT, DSP_HEIGHT-TFT_FRAMEWDT-4, 0, WA_LEFT }, MAX_WIDTH, 4, true };
 const FillConfig  playlBGConf     PROGMEM = {{ 0, 76, 0, WA_LEFT }, DSP_WIDTH, 22, false };
 const FillConfig  heapbarConf     PROGMEM = {{ 0, DSP_HEIGHT-1, 0, WA_LEFT }, DSP_WIDTH, 1, false };
@@ -37,8 +35,8 @@ const FillConfig  heapbarConf     PROGMEM = {{ 0, DSP_HEIGHT-1, 0, WA_LEFT }, DS
 /* WIDGETS  */                           /* { left, top, fontsize, align } */
 const WidgetConfig bootstrConf    PROGMEM = { 0, 150, 1, WA_CENTER };
 const WidgetConfig bitrateConf    PROGMEM = { TFT_FRAMEWDT+6, DSP_HEIGHT-TFT_FRAMEWDT-14-14, 1, WA_RIGHT };
-const WidgetConfig voltxtConf     PROGMEM = { 80, DSP_HEIGHT-TFT_FRAMEWDT-14, 1, WA_RIGHT };
-const WidgetConfig  iptxtConf     PROGMEM = { TFT_FRAMEWDT, DSP_HEIGHT-TFT_FRAMEWDT-14, 1, WA_LEFT };
+const WidgetConfig voltxtConf     PROGMEM = { TFT_FRAMEWDT, DSP_HEIGHT-TFT_FRAMEWDT-14, 1, WA_LEFT };
+const WidgetConfig  iptxtConf     PROGMEM = { TFT_FRAMEWDT, DSP_HEIGHT-TFT_FRAMEWDT-14, 1, WA_CENTER };
 const WidgetConfig   rssiConf     PROGMEM = { TFT_FRAMEWDT, DSP_HEIGHT-TFT_FRAMEWDT-14, 1, WA_RIGHT };
 const WidgetConfig numConf        PROGMEM = { 0, 110, 35, WA_CENTER };
 const WidgetConfig apNameConf     PROGMEM = { TFT_FRAMEWDT, 38, 2, WA_CENTER };
@@ -56,8 +54,8 @@ const VUBandsConfig bandsConf     PROGMEM = { 19, 90, 2, 2, 10, 2 };
 /* STRINGS  */
 const char         numtxtFmt[]    PROGMEM = "%d";
 const char           rssiFmt[]    PROGMEM = "WiFi %d";
-const char          iptxtFmt[]    PROGMEM = "IP %s";
-const char         voltxtFmt[]    PROGMEM = "%d";
+const char          iptxtFmt[]    PROGMEM = "%s";
+const char         voltxtFmt[]    PROGMEM = "\023\025%d";
 const char        bitrateFmt[]    PROGMEM = "%d kBs";
 
 /* MOVES  */                             /* { left, top, width } */

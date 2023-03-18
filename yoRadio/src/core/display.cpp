@@ -85,12 +85,19 @@ void Display::_buildPager(){
   #else
     _plcurrent.init("*", playlistConf, config.theme.plcurrent, config.theme.plcurrentbg);
   #endif
+  #if !defined(DSP_LCD)
+  	_plcurrent.moveTo({TFT_FRAMEWDT, (uint16_t)(dsp.plYStart+dsp.plCurrentPos*dsp.plItemHeight), (int16_t)playlistConf.width});
+  #endif
   #ifndef HIDE_TITLE2
     _title2 = new ScrollWidget("*", title2Conf, config.theme.title2, config.theme.background);
   #endif
   #if !defined(DSP_LCD) && DSP_MODEL!=DSP_NOKIA5110
     _plbackground = new FillWidget(playlBGConf, config.theme.plcurrentfill);
-    _metabackground = new FillWidget(metaBGConf, config.theme.metafill);
+    #if DSP_INVERT_TITLE || defined(DSP_OLED)
+      _metabackground = new FillWidget(metaBGConf, config.theme.metafill);
+    #else
+      _metabackground = new FillWidget(metaBGConfInv, config.theme.metafill);
+    #endif
   #endif
   #if DSP_MODEL==DSP_NOKIA5110
     _plbackground = new FillWidget(playlBGConf, 1);
@@ -116,7 +123,7 @@ void Display::_buildPager(){
   #endif
   _nums.init(numConf, 10, false, config.theme.digit, config.theme.background);
   #ifndef HIDE_WEATHER
-    _weather = new ScrollWidget("*", weatherConf, config.theme.weather, config.theme.background);
+    _weather = new ScrollWidget("\007", weatherConf, config.theme.weather, config.theme.background);
   #endif
   
   if(_volbar)   _footer.addWidget( _volbar);
@@ -148,8 +155,13 @@ void Display::_buildPager(){
   #if !defined(DSP_LCD) && DSP_MODEL!=DSP_NOKIA5110
     pages[PG_DIALOG]->addPage(&_footer);
   #endif
-  
-  if(_plbackground) pages[PG_PLAYLIST]->addWidget( _plbackground);
+  #if !defined(DSP_LCD)
+  if(_plbackground) {
+    pages[PG_PLAYLIST]->addWidget( _plbackground);
+    _plbackground->setHeight(dsp.plItemHeight);
+    _plbackground->moveTo({0,(uint16_t)(dsp.plYStart+dsp.plCurrentPos*dsp.plItemHeight-playlistConf.widget.textsize*2), (int16_t)playlBGConf.width});
+  }
+  #endif
   pages[PG_PLAYLIST]->addWidget(&_plcurrent);
 
   for(const auto& p: pages) _pager.addPage(p);
@@ -160,17 +172,21 @@ void Display::_apScreen() {
   #ifndef DSP_LCD
     _boot = new Page();
     #if DSP_MODEL!=DSP_NOKIA5110
-    _boot->addWidget(new FillWidget(metaBGConf, config.theme.metafill));
+      #if DSP_INVERT_TITLE || defined(DSP_OLED)
+      _boot->addWidget(new FillWidget(metaBGConf, config.theme.metafill));
+      #else
+      _boot->addWidget(new FillWidget(metaBGConfInv, config.theme.metafill));
+      #endif
     #endif
     ScrollWidget *bootTitle = (ScrollWidget*) &_boot->addWidget(new ScrollWidget("*", apTitleConf, config.theme.meta, config.theme.metabg));
     bootTitle->setText("ёRadio AP Mode");
     TextWidget *apname = (TextWidget*) &_boot->addWidget(new TextWidget(apNameConf, 30, false, config.theme.title1, config.theme.background));
     apname->setText(apNameTxt);
-    TextWidget *apname2 = (TextWidget*) &_boot->addWidget(new TextWidget(apName2Conf, 30, false, config.theme.metabg, config.theme.background));
+    TextWidget *apname2 = (TextWidget*) &_boot->addWidget(new TextWidget(apName2Conf, 30, false, config.theme.clock, config.theme.background));
     apname2->setText(apSsid);
     TextWidget *appass = (TextWidget*) &_boot->addWidget(new TextWidget(apPassConf, 30, false, config.theme.title1, config.theme.background));
     appass->setText(apPassTxt);
-    TextWidget *appass2 = (TextWidget*) &_boot->addWidget(new TextWidget(apPass2Conf, 30, false, config.theme.metabg, config.theme.background));
+    TextWidget *appass2 = (TextWidget*) &_boot->addWidget(new TextWidget(apPass2Conf, 30, false, config.theme.clock, config.theme.background));
     appass2->setText(apPassword);
     ScrollWidget *bootSett = (ScrollWidget*) &_boot->addWidget(new ScrollWidget("*", apSettConf, config.theme.title2, config.theme.background));
     bootSett->setText(WiFi.softAPIP().toString().c_str(), apSettFmt);
@@ -195,7 +211,7 @@ void Display::_start() {
     return;
   }
   #ifdef USE_NEXTION
-    nextion.putcmd("page player");
+    //nextion.putcmd("page player");
     nextion.start();
   #endif
   _buildPager();
@@ -208,7 +224,7 @@ void Display::_start() {
   if(_weather && config.store.showweather)  _weather->setText(const_getWeather);
 
   if(_vuwidget) _vuwidget->lock();
-  if(_rssi)     _rssi->setText(WiFi.RSSI(), rssiFmt);
+  if(_rssi)     _setRSSI(WiFi.RSSI());
   #ifndef HIDE_IP
     if(_volip) _volip->setText(WiFi.localIP().toString().c_str(), iptxtFmt);
   #endif
@@ -236,12 +252,16 @@ void Display::_setReturnTicker(uint8_t time_s){
 
 void Display::_swichMode(displayMode_e newmode) {
   #ifdef USE_NEXTION
-    nextion.swichMode(newmode);
+    //nextion.swichMode(newmode);
+    nextion.putRequest({NEWMODE, newmode});
   #endif
   if (newmode == _mode || network.status != CONNECTED) return;
   _mode = newmode;
   dsp.setScrollId(NULL);
   if (newmode == PLAYER) {
+  	#ifdef DSP_LCD
+  		dsp.clearDsp();
+  	#endif
     numOfNextStation = 0;
     _returnTicker.detach();
     #ifdef META_MOVE
@@ -278,26 +298,18 @@ void Display::resetQueue(){
 }
 
 void Display::_drawPlaylist() {
-  char buf[PLMITEMLENGHT];
-  dsp.drawPlaylist(currentPlItem, buf);
-  _plcurrent.setText(buf);
-/*#ifdef USE_NEXTION
-  nextion.drawPlaylist(currentPlItem);
-#endif*/
+  dsp.drawPlaylist(currentPlItem);
   _setReturnTicker(30);
 }
 
 void Display::_drawNextStationNum(uint16_t num) {
-  char plMenu[1][40];
-  char currentItemText[40] = {0};
-  config.fillPlMenu(plMenu, num, 1, true);
-  strlcpy(currentItemText, plMenu[0], 39);
   _setReturnTicker(30);
-  _meta.setText(currentItemText);
+  _meta.setText(config.stationByNum(num));
   _nums.setText(num, "%d");
-/*#ifdef USE_NEXTION
-  nextion.drawNextStationNum(num);
-#endif*/
+}
+
+void Display::printPLitem(uint8_t pos, const char* item){
+  dsp.printPLitem(pos, item, _plcurrent);
 }
 
 void Display::putRequest(displayRequestType_e type, int payload){
@@ -333,7 +345,7 @@ void Display::_layoutChange(bool played){
   }
 }
 #ifndef DSP_QUEUE_TICKS
-  #define DSP_QUEUE_TICKS 8
+  #define DSP_QUEUE_TICKS 0
 #endif
 void Display::loop() {
   if(_bootStep==0) {
@@ -404,7 +416,7 @@ void Display::loop() {
         #endif*/
         break;
       }
-      case DSPRSSI: if(_rssi){ _rssi->setText(request.payload, rssiFmt); } if (_heapbar && config.store.audioinfo) _heapbar->setValue(player.inBufferFilled()); break;
+      case DSPRSSI: if(_rssi){ _setRSSI(request.payload); } if (_heapbar && config.store.audioinfo) _heapbar->setValue(player.isRunning()?player.inBufferFilled():0); break;
       case PSTART: _layoutChange(true);   break;
       case PSTOP:  _layoutChange(false);  break;
       case DSP_START: _start();  break;
@@ -412,6 +424,22 @@ void Display::loop() {
     }
   }
   dsp.loop();
+}
+
+void Display::_setRSSI(int rssi) {
+  if(!_rssi) return;
+#if RSSI_DIGIT
+  _rssi->setText(rssi, rssiFmt);
+  return;
+#endif
+  char rssiG[3];
+  int rssi_steps[] = {RSSI_STEPS};
+  if(rssi >= rssi_steps[0]) strlcpy(rssiG, "\004\006", 3);
+  if(rssi >= rssi_steps[1] && rssi < rssi_steps[0]) strlcpy(rssiG, "\004\005", 3);
+  if(rssi >= rssi_steps[2] && rssi < rssi_steps[1]) strlcpy(rssiG, "\004\002", 3);
+  if(rssi >= rssi_steps[3] && rssi < rssi_steps[2]) strlcpy(rssiG, "\003\002", 3);
+  if(rssi <  rssi_steps[3] || rssi >=  0) strlcpy(rssiG, "\001\002", 3);
+  _rssi->setText(rssiG);
 }
 
 void Display::_station() {
@@ -455,9 +483,12 @@ void Display::_title() {
 }
 
 void Display::_time(bool redraw) {
+  
 #if LIGHT_SENSOR!=255
-  config.store.brightness = AUTOBACKLIGHT(analogRead(LIGHT_SENSOR));
-  config.setBrightness();
+  if(config.store.dspon) {
+    config.store.brightness = AUTOBACKLIGHT(analogRead(LIGHT_SENSOR));
+    config.setBrightness();
+  }
 #endif
   _clock.draw();
   /*#ifdef USE_NEXTION
@@ -512,6 +543,7 @@ void Display::init(){
 }
 void Display::_start(){
   #ifdef USE_NEXTION
+  //nextion.putcmd("page player");
   nextion.start();
   #endif
 }

@@ -33,27 +33,33 @@ void DspCore::initDisplay() {
   fillScreen(0x0000);
   invert();
   flip();
+  
+  plItemHeight = playlistConf.widget.textsize*(CHARHEIGHT-1)+playlistConf.widget.textsize*4;
+  plTtemsCount = round((float)height()/plItemHeight);
+  if(plTtemsCount%2==0) plTtemsCount++;
+  plCurrentPos = plTtemsCount/2;
+  plYStart = (height() / 2 - plItemHeight / 2) - plItemHeight * (plTtemsCount - 1) / 2 + playlistConf.widget.textsize*2;
 }
 
 void DspCore::drawLogo(uint16_t top) { drawRGBBitmap((width() - 99) / 2, top, bootlogo2, 99, 64); }
 
-void DspCore::drawPlaylist(uint16_t currentItem, char* currentItemText) {
-  for (byte i = 0; i < PLMITEMS; i++) {
-    plMenu[i][0] = '\0';
+void DspCore::printPLitem(uint8_t pos, const char* item, ScrollWidget& current){
+  setTextSize(playlistConf.widget.textsize);
+  if (pos == plCurrentPos) {
+    current.setText(item);
+  } else {
+    uint8_t plColor = (abs(pos - plCurrentPos)-1)>4?4:abs(pos - plCurrentPos)-1;
+    setTextColor(config.theme.playlist[plColor], config.theme.background);
+    setCursor(TFT_FRAMEWDT, plYStart + pos * plItemHeight);
+    fillRect(0, plYStart + pos * plItemHeight - 1, width(), plItemHeight - 2, config.theme.background);
+    print(utf8Rus(item, true));
   }
-  config.fillPlMenu(plMenu, currentItem - 5, PLMITEMS);
-  setTextSize(3);
-  int yStart = (height() / 2 - PLMITEMHEIGHT / 2) - PLMITEMHEIGHT * (PLMITEMS - 1) / 2 + 3;
+}
 
-  for (byte i = 0; i < PLMITEMS; i++) {
-    if (i == 5) {
-      strlcpy(currentItemText, plMenu[i], PLMITEMLENGHT - 1);
-    } else {
-      setTextColor(config.theme.playlist[abs(i - 5)-1], config.theme.background);
-      setCursor(TFT_FRAMEWDT, yStart + i * PLMITEMHEIGHT);
-      fillRect(0, yStart + i * PLMITEMHEIGHT - 1, width(), PLMITEMHEIGHT - 6, config.theme.background);
-      print(utf8Rus(plMenu[i], true));
-    }
+void DspCore::drawPlaylist(uint16_t currentItem) {
+  uint8_t lastPos = config.fillPlMenu(currentItem - plCurrentPos, plTtemsCount);
+  if(lastPos<plTtemsCount){
+    fillRect(0, lastPos*plItemHeight+plYStart, width(), height()/2, config.theme.background);
   }
 }
 
@@ -89,7 +95,7 @@ void DspCore::_clockSeconds(){
   print(_bufforseconds);                                      /* print seconds */
   setTextSize(1);
   setFont(&DS_DIGI56pt7b);
-  setTextColor((network.timeinfo.tm_sec % 2 == 0) ? config.theme.clock : config.theme.background, config.theme.background);
+  setTextColor((network.timeinfo.tm_sec % 2 == 0) ? config.theme.clock : (CLOCKFONT_MONO?config.theme.clockbg:config.theme.background), config.theme.background);
   setCursor(_timeleft+_dotsLeft, clockTop);
   print(":");                                     /* print dots */
   setFont();
@@ -112,10 +118,16 @@ void DspCore::_clockDate(){
 }
 
 void DspCore::_clockTime(){
-  if(_oldtimeleft>0) dsp.fillRect(_oldtimeleft, clockTop-clockTimeHeight+1, _oldtimewidth, clockTimeHeight, config.theme.background);
+  if(_oldtimeleft>0 && !CLOCKFONT_MONO) dsp.fillRect(_oldtimeleft, clockTop-clockTimeHeight+1, _oldtimewidth, clockTimeHeight, config.theme.background);
   _timeleft = width()-clockRightSpace-CHARWIDTH*4*2-24-_timewidth;
   setTextSize(1);
   setFont(&DS_DIGI56pt7b);
+  
+  if(CLOCKFONT_MONO) {
+    setCursor(_timeleft, clockTop);
+    setTextColor(config.theme.clockbg, config.theme.background);
+    print("88:88");
+  }
   setTextColor(config.theme.clock, config.theme.background);
   setCursor(_timeleft, clockTop);
   print(_timeBuf);

@@ -11,7 +11,9 @@
 #define EEPROM_START      500
 #define EEPROM_START_IR   0
 #define EEPROM_START_2    10
-#define BUFLEN            140
+#ifndef BUFLEN
+  #define BUFLEN            170
+#endif
 #define PLAYLIST_PATH     "/data/playlist.csv"
 #define SSIDS_PATH        "/data/wifi.csv"
 #define TMP_PATH          "/data/tmpfile.txt"
@@ -50,6 +52,7 @@ struct theme_t {
   uint16_t vumax;
   uint16_t vumin;
   uint16_t clock;
+  uint16_t clockbg;
   uint16_t seconds;
   uint16_t dow;
   uint16_t date;
@@ -155,6 +158,7 @@ class Config {
     uint32_t sdResumePos;
     uint16_t backupLastStation;
     bool     sdSnuffle;
+    bool     emptyFS;
   public:
     Config() {};
     void save();
@@ -183,7 +187,8 @@ class Config {
     void setSmartStart(byte ss);
     void initPlaylist();
     void indexPlaylist();
-    void fillPlMenu(char plmenu[][40], int from, byte count, bool removeNum = false);
+    uint8_t fillPlMenu(int from, uint8_t count, bool fromNextion=false);
+    char * stationByNum(uint16_t num);
     void setTimezone(int8_t tzh, int8_t tzm);
     void setTimezoneOffset(uint16_t tzo);
     uint16_t getTimezoneOffset();
@@ -204,6 +209,9 @@ class Config {
     void initSDPlaylist();
     void indexSDPlaylist();
     bool checkNoMedia(const char* path);
+    void _initHW();
+    bool _isFSempty();
+    char _stationBuf[BUFLEN/2];
 };
 
 extern Config config;

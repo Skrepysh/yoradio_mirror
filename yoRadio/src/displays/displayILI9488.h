@@ -5,7 +5,12 @@
 #include "Arduino.h"
 #include <Adafruit_GFX.h>
 #include "../ILI9488/ILI9486_SPI.h"
-#include "fonts/DS_DIGI56pt7b.h"        // https://tchapi.github.io/Adafruit-GFX-Font-Customiser/
+
+#if CLOCKFONT_MONO
+  #include "fonts/DS_DIGI56pt7b_mono.h"        // https://tchapi.github.io/Adafruit-GFX-Font-Customiser/
+#else
+  #include "fonts/DS_DIGI56pt7b.h"
+#endif
 #include "tools/l10n.h"
 
 #define CHARWIDTH   6
@@ -15,7 +20,7 @@ typedef GFXcanvas16 Canvas;
 #include "widgets/widgets.h"
 #include "widgets/pages.h"
 
-#if __has_include("conf/displayST7796conf_custom.h")
+#if __has_include("conf/displayILI9488conf_custom.h")
   #include "conf/displayILI9488conf_custom.h"
 #else
   #include "conf/displayILI9488conf.h"

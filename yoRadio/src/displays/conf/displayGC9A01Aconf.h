@@ -11,10 +11,7 @@
 #define DSP_WIDTH       240
 #define TFT_FRAMEWDT    8
 #define MAX_WIDTH       DSP_WIDTH-TFT_FRAMEWDT*2
-#define PLMITEMS        11
-#define PLMITEMLENGHT   40
-#define PLMITEMHEIGHT   22
-
+#define RSSI_DIGIT			true
 #define bootLogoTop     68
 #define HIDE_TITLE2
 #define BOOMBOX_STYLE
@@ -29,6 +26,7 @@ const ScrollConfig apSettConf     PROGMEM = {{ TFT_FRAMEWDT+32, 240-TFT_FRAMEWDT
 const ScrollConfig weatherConf    PROGMEM = {{ TFT_FRAMEWDT+30, 37, 1, WA_LEFT }, 140, true, MAX_WIDTH-60, 0, 3, 30 };
 /* BACKGROUNDS  */                       /* {{ left, top, fontsize, align }, width, height, outlined } */
 const FillConfig   metaBGConf     PROGMEM = {{ 0, 32+20, 0, WA_LEFT }, DSP_WIDTH, 30, false };
+const FillConfig   metaBGConfInv  PROGMEM = {{ 0, 32+20+30, 0, WA_LEFT }, DSP_WIDTH, 1, false };
 const FillConfig   volbarConf     PROGMEM = {{ TFT_FRAMEWDT+56, 240-TFT_FRAMEWDT-6, 0, WA_LEFT }, MAX_WIDTH-112, 6+TFT_FRAMEWDT+1, true };
 const FillConfig  playlBGConf     PROGMEM = {{ 0, 107, 0, WA_LEFT }, DSP_WIDTH, 24, false };
 const FillConfig  heapbarConf     PROGMEM = {{ 0, 83, 0, WA_LEFT }, DSP_WIDTH, 1, false };
@@ -57,7 +55,7 @@ const VUBandsConfig bandsConf     PROGMEM = { 90, 20, 6, 2, 10, 5 };
 const char         numtxtFmt[]    PROGMEM = "%d";
 const char           rssiFmt[]    PROGMEM = "WIFI %d";
 const char          iptxtFmt[]    PROGMEM = "%s";
-const char         voltxtFmt[]    PROGMEM = "VOL %d";
+const char         voltxtFmt[]    PROGMEM = "\023\025%d";
 const char        bitrateFmt[]    PROGMEM = "%d KBS";
 
 /* MOVES  */                             /* { left, top, width } */

@@ -25,6 +25,7 @@ AsyncUDP udp;
 
 String processor(const String& var);
 void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
+void handleUploadWeb(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
 void handleUpdate(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
 void handleHTTPArgs(AsyncWebServerRequest * request);
 void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
@@ -53,12 +54,32 @@ bool NetServer::begin() {
   irRecordEnable = false;
   nsQueue = xQueueCreate( 20, sizeof( nsRequestParams_t ) );
   while(nsQueue==NULL){;}
-  webserver.on("/", HTTP_ANY, handleHTTPArgs);
+  if(config.emptyFS){
+    webserver.on("/", HTTP_GET, [](AsyncWebServerRequest * request) { request->send_P(200, "text/html", emptyfs_html, processor); });
+    webserver.on("/", HTTP_POST, [](AsyncWebServerRequest *request) { 
+		  if(request->arg("ssid")!="" && request->arg("pass")!=""){
+		  	char buf[BUFLEN];
+		  	memset(buf, 0, BUFLEN);
+		  	snprintf(buf, BUFLEN, "%s\t%s", request->arg("ssid").c_str(), request->arg("pass").c_str());
+		  	request->redirect("/");
+		  	config.saveWifiFromNextion(buf);
+		  	return;
+		  }
+		  request->redirect("/"); 
+		  ESP.restart(); 
+    }, handleUploadWeb);
+  }else{
+    webserver.on("/", HTTP_ANY, handleHTTPArgs);
+    webserver.on("/webboard", HTTP_GET, [](AsyncWebServerRequest * request) { request->send_P(200, "text/html", emptyfs_html, processor); });
+    webserver.on("/webboard", HTTP_POST, [](AsyncWebServerRequest *request) { request->redirect("/"); }, handleUploadWeb);
+  }
+  
   webserver.on(PLAYLIST_PATH, HTTP_GET, handleHTTPArgs);
   webserver.on(INDEX_PATH, HTTP_GET, handleHTTPArgs);
   webserver.on(PLAYLIST_SD_PATH, HTTP_GET, handleHTTPArgs);
   webserver.on(INDEX_SD_PATH, HTTP_GET, handleHTTPArgs);
   webserver.on(SSIDS_PATH, HTTP_GET, handleHTTPArgs);
+  
   webserver.on("/upload", HTTP_POST, beginUpload, handleUpload);
   webserver.on("/update", HTTP_GET, handleHTTPArgs);
   webserver.on("/update", HTTP_POST, beginUpdate, handleUpdate);
@@ -95,7 +116,7 @@ void handleUpdate(AsyncWebServerRequest *request, String filename, size_t index,
   if (!index) {
     int target = (request->getParam("updatetarget", true)->value() == "spiffs") ? U_SPIFFS : U_FLASH;
     Serial.printf("Update Start: %s\n", filename.c_str());
-    player.mode = STOPPED;
+    player.sendCommand({PR_STOP, 0});
     display.putRequest(NEWMODE, UPDATING);
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, target)) {
       Update.printError(Serial);
@@ -165,11 +186,15 @@ void NetServer::chunkedHtmlPage(const String& contentType, AsyncWebServerRequest
   #define SHOW_WEATHER  false
 #endif
 
+#ifndef NS_QUEUE_TICKS
+  #define NS_QUEUE_TICKS 0
+#endif
+
 char wsbuf[BUFLEN * 2];
 void NetServer::processQueue(){
   if(nsQueue==NULL) return;
   nsRequestParams_t request;
-  if(xQueueReceive(nsQueue, &request, 5)){
+  if(xQueueReceive(nsQueue, &request, NS_QUEUE_TICKS)){
     memset(wsbuf, 0, BUFLEN * 2);
     uint8_t clientId = request.clientId;
     switch (request.type) {
@@ -218,13 +243,13 @@ void NetServer::processQueue(){
       case STATIONNAME: sprintf (wsbuf, "{\"nameset\": \"%s\"}", config.station.name); break;
       case ITEM:        sprintf (wsbuf, "{\"current\": %d}", config.store.lastStation); break;
       case TITLE:       sprintf (wsbuf, "{\"meta\": \"%s\"}", config.station.title); if (player.requestToStart) { telnet.info(); player.requestToStart = false; } else { telnet.printf("##CLI.META#: %s\n> ", config.station.title); } break;
-      case VOLUME:      sprintf (wsbuf, "{\"vol\": %d}", config.store.volume); break;
+      case VOLUME:      sprintf (wsbuf, "{\"vol\": %d}", config.store.volume); telnet.printf("##CLI.VOL#: %d\n", config.store.volume); break;
       case NRSSI:       sprintf (wsbuf, "{\"rssi\": %d}", rssi); /*rssi = 255;*/ break;
       case SDPOS:       sprintf (wsbuf, "{\"sdpos\": %d,\"sdend\": %d,\"sdtpos\": %d,\"sdtend\": %d}", player.getFilePos(), player.getFileSize(), player.getAudioCurrentTime(), player.getAudioFileDuration()); break;
       case SDLEN:       sprintf (wsbuf, "{\"sdmin\": %d,\"sdmax\": %d}", player.sd_min, player.sd_max); break;
       case SDSNUFFLE:   sprintf (wsbuf, "{\"snuffle\": %d}", config.sdSnuffle); break;
       case BITRATE:     sprintf (wsbuf, "{\"bitrate\": %d}", config.station.bitrate); break;
-      case MODE:        sprintf (wsbuf, "{\"mode\": \"%s\"}", player.mode == PLAYING ? "playing" : "stopped"); break;
+      case MODE:        sprintf (wsbuf, "{\"mode\": \"%s\"}", player.status() == PLAYING ? "playing" : "stopped"); break;
       case EQUALIZER:   sprintf (wsbuf, "{\"bass\": %d, \"middle\": %d, \"trebble\": %d}", config.store.bass, config.store.middle, config.store.trebble); break;
       case BALANCE:     sprintf (wsbuf, "{\"balance\": %d}", config.store.balance); break;
       default:          break;
@@ -499,13 +524,14 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
       } /*  EOF RESETS  */
       if (strcmp(cmd, "volume") == 0) {
         byte v = atoi(val);
-        player.setVol(v, false);
+        player.setVol(v);
       }
       if (strcmp(cmd, "sdpos") == 0) {
         if (config.store.play_mode==PM_SDCARD){
           config.sdResumePos = 0;
           if(!player.isRunning()){
-            player.play(config.store.lastStation, atoi(val)-player.sd_min);
+            player.setResumeFilePos(atoi(val)-player.sd_min);
+            player.sendCommand({PR_PLAY, config.store.lastStation});
           }else{
             player.setFilePos(atoi(val)-player.sd_min);
           }
@@ -554,8 +580,7 @@ void NetServer::onWsMessage(void *arg, uint8_t *data, size_t len, uint8_t client
 #endif
         //        xSemaphoreGive(player.playmutex);
         if (player.isRunning()) {
-          player.request.station = config.store.lastStation;
-          player.request.doSave = false;
+          player.sendCommand({PR_PLAY, -config.store.lastStation});
         }
         return;
       }
@@ -632,7 +657,6 @@ bool NetServer::importPlaylist() {
 }
 
 void NetServer::requestOnChange(requestType_e request, uint8_t clientId) {
-  //char buf[BUFLEN * 2] = { 0 };
   nsRequestParams_t nsrequest;
   nsrequest.type = request;
   nsrequest.clientId = clientId;
@@ -640,6 +664,8 @@ void NetServer::requestOnChange(requestType_e request, uint8_t clientId) {
 }
 
 String processor(const String& var) { // %Templates%
+  if (var == "ACTION") return (network.status == CONNECTED && !config.emptyFS)?"webboard":"";
+  if (var == "UPLOADWIFI") return (network.status == CONNECTED)?" hidden":"";
   if (var == "VERSION") return YOVERSION;
   if (var == "MODE") {
     if(config.store.play_mode==PM_SDCARD) {
@@ -653,6 +679,9 @@ String processor(const String& var) { // %Templates%
 
 void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
   if (!index) {
+    //String spath = "/www/";
+    //if(filename=="playlist.csv" || filename=="wifi.csv") spath = "/data/";
+    //request->_tempFile = SPIFFS.open(config.emptyFS?spath + filename:TMP_PATH , "w");
     request->_tempFile = SPIFFS.open(TMP_PATH , "w");
   }
   if (len) {
@@ -661,6 +690,22 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
   }
   if (final) {
     request->_tempFile.close();
+  }
+}
+
+void handleUploadWeb(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+  DBGVB("File: %s, size:%u bytes, index: %u, final: %s\n", filename.c_str(), len, index, final?"true":"false");
+  if (!index) {
+    String spath = "/www/";
+    if(filename=="playlist.csv" || filename=="wifi.csv") spath = "/data/";
+    request->_tempFile = SPIFFS.open(spath + filename , "w");
+  }
+  if (len) {
+    request->_tempFile.write(data, len);
+  }
+  if (final) {
+    request->_tempFile.close();
+    if(filename=="playlist.csv") config.indexPlaylist();
   }
 }
 
@@ -702,8 +747,8 @@ void handleHTTPArgs(AsyncWebServerRequest * request) {
   }
   if (network.status == CONNECTED) {
     bool commandFound=false;
-    if (request->hasArg("start")) { player.request.station = config.store.lastStation; commandFound=true; }
-    if (request->hasArg("stop")) { player.mode = STOPPED; config.setTitle(const_PlStopped); commandFound=true; }
+    if (request->hasArg("start")) { player.sendCommand({PR_PLAY, config.store.lastStation}); commandFound=true; }
+    if (request->hasArg("stop")) { player.sendCommand({PR_STOP, 0}); commandFound=true; }
     if (request->hasArg("toggle")) { player.toggle(); commandFound=true; }
     if (request->hasArg("prev")) { player.prev(); commandFound=true; }
     if (request->hasArg("next")) { player.next(); commandFound=true; }
@@ -735,8 +780,7 @@ void handleHTTPArgs(AsyncWebServerRequest * request) {
       int id = atoi(p->value().c_str());
       if (id < 1) id = 1;
       if (id > config.store.countStation) id = config.store.countStation;
-      player.request.station = id;
-      player.request.doSave = true;
+      player.sendCommand({PR_PLAY, id});
       commandFound=true;
       DBGVB("[%s] play=%d", __func__, id);
     }
@@ -746,7 +790,7 @@ void handleHTTPArgs(AsyncWebServerRequest * request) {
       if (v < 0) v = 0;
       if (v > 254) v = 254;
       config.store.volume = v;
-      player.setVol(v, false);
+      player.setVol(v);
       commandFound=true;
       DBGVB("[%s] vol=%d", __func__, v);
     }

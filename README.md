@@ -65,6 +65,10 @@ https://aliexpress.com/item/32965676064.html
 - or **GC9A01A** 1.28' 240x240 https://aliexpress.com/item/1005004069703494.html?sku_id=12000029869654615
 - or **ILI9488** 3.5' 480x320 SPI https://aliexpress.com/item/1005001999296476.html?sku_id=12000018365356570
 - or **ILI9486** (Testing mode) 3.5' 480x320 SPI https://aliexpress.com/item/1005001999296476.html?sku_id=12000018365356568
+- or **SSD1322** 2.8' 256x64 SPI https://aliexpress.com/item/1005003480981568.html
+- or **ST7920** 2.6' 128x64 SPI https://aliexpress.com/item/32699482638.html
+
+(see [Wiki](https://github.com/e2002/yoradio/wiki/Available-display-models) for more details)
 
 ##### Controls
 - Three tact buttons https://www.aliexpress.com/item/32907144687.html
@@ -139,16 +143,15 @@ Rotation of the display:
 - <span style="color: red; font-weight: bold; font-size: 22px;text-decoration: underline;">Arduino IDE version 2.x.x is not supported. Use Arduino IDE 1.8.19</span>
 - <span style="color: red; font-weight: bold; font-size: 22px;text-decoration: underline;">ESP32 core version 2.0.0 or higher is [required](https://github.com/espressif/arduino-esp32)!</span>
 1. Generate a myoptions.h file for your hardware configuration using [this tool](https://e2002.github.io/docs/myoptions-generator.html).
-2. Put myoptions.h file next to yoRadio.ino and restart Arduino IDE.
-3. In ArduinoIDE - upload sketch data via Tools→ESP32 Sketch Data Upload ([it's here](images/board2.jpg))
-4. Upload the sketch to the board
-5. Connect to yoRadioAP access point with password 12345987, go to http://192.168.4.1/ configure and wifi connections.  \
+2. Put myoptions.h file next to yoRadio.ino.
+3. Replace file Arduino/libraries/Adafruit_GFX_Library/glcdfont.c with file [yoRadio/fonts/glcdfont.c](yoRadio/fonts/glcdfont.c)
+4. Restart Arduino IDE.
+5. In ArduinoIDE - upload sketch data via Tools→ESP32 Sketch Data Upload ([it's here](images/board2.jpg))
+6. Upload the sketch to the board
+7. Connect to yoRadioAP access point with password 12345987, go to http://192.168.4.1/ configure and wifi connections.  \
 _\*this step can be skipped if you add WiFiSSID WiFiPassword pairs to the [yoRadio/data/data/wifi.csv](yoRadio/data/data/wifi.csv) file (tab-separated values, one line per access point) before uploading the sketch data in step 1_
-6. After successful connection go to http://\<yoipaddress\>/ , add stations to playlist (or import WebStations.txt from KaRadio)
-7. Well done!
-
-**Localization:**
-Если Adafruit_GFX ещё не русифицирована, русифицировать её, заменив файл Arduino/libraries/Adafruit_GFX_Library/glcdfont.c файлом [yoRadio/fonts/glcdfont.c](yoRadio/fonts/glcdfont.c)
+8. After successful connection go to http://\<yoipaddress\>/ , add stations to playlist (or import WebStations.txt from KaRadio)
+9. Well done!
 
 **See [wiki](https://github.com/e2002/yoradio/wiki/How-to-flash#build--flash) for details**
 
@@ -223,6 +226,48 @@ Work is in progress...
 
 ---
 ## Version history
+#### v0.9.110
+- optimization and bug fixes (display, player, netserver, telnet. mqtt)
+
+#### v0.9.084
+- monospace fonts for clock on TFT displays. Fonts can be restored to their original form by adding the ```#define CLOCKFONT_MONO false``` parameter to the myoptions.h file
+- new parameter ```#define COLOR_CLOCK_BG R,G,B``` - color of inactive clock segments
+
+#### v0.9.058
+- added support for ST7920 128x64 2.6' OLED display https://aliexpress.com/item/32699482638.html
+
+#### v0.9.045
+- added support for SSD1322 256x64 2.8' OLED display https://aliexpress.com/item/1005003480981568.html
+
+#### v0.9.022
+- optimization of the display of the list of stations
+- now the playlist size can be changed with one parameter in the yoRadio/src/displays/conf/display<span>_XXXX_</span>conf.h file --> _const ScrollConfig playlistConf_ param #3
+- fixed fonts for ILI9225 display
+- fixes in Nextion displays
+- bug fixes (including BUFFER FILLED IN 403 MS)
+
+#### v0.9.001
+- fixed compilation error netserver.cpp:63:28 for some configurations
+
+#### v0.9.000
+- added WEB Board Uploader. ESP32 Filesystem Uploader is no longer needed, the initial setup can be done in the browser. (see [wiki](https://github.com/e2002/yoradio/wiki/WEB-Board-Uploader) for more info)
+- fixed error getting weather for some locations
+
+#### v0.8.990
+- fixed error displaying access point credentials when DSP_INVERT_TITLE is false
+- fixed compilation error for OLED displays when DSP_INVERT_TITLE is false
+
+#### v0.8.988
+- **DSP_INVERT_TITLE** now works for all displays when assigned
+   ```#define DSP_INVERT_TITLE false```
+   the display title takes on a "classic" look (light letters on a dark background)
+- advanced weather display - wind direction and strength, feels like
+- sea level pressure changed to surface pressure
+- added degree icon [\*ps]
+- displaying the WiFi signal level in graphical form [\*ps]
+
+[\*ps] - **glcdfont.c** from the **Adafruit_GFX_Library** library has been changed to add new icons, so for the correct display of all this, you need to replace the specified file in the Adafruit_GFX library with the file from the yoRadio/fonts/ folder
+
 #### v0.8.962
 - fixed reboot error after sending media from Home Assistant
 - fixed bug when playing media from Home Assistant for VS1053
